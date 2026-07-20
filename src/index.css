@@ -2141,7 +2141,7 @@ svg {
   height: 24px;
   border-radius: 50%;
   background:
-    conic-gradient(
+    conic-gradient( so 
       from -45deg,
       #4285f4 0 25%,
       #34a853 0 50%,
