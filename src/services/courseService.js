@@ -1,14 +1,12 @@
 import api from "./api";
 
-/*
-  Read the currently logged-in user
-  from sessionStorage.
-*/
-
 const getStoredUser = () => {
   try {
     const storedUser =
       sessionStorage.getItem(
+        "skillverseUser"
+      ) ||
+      localStorage.getItem(
         "skillverseUser"
       );
 
@@ -29,10 +27,6 @@ const getStoredUser = () => {
   }
 };
 
-/*
-  Get currently logged-in user's ID
-*/
-
 export const getCurrentUserId =
   () => {
     const storedUser =
@@ -42,6 +36,9 @@ export const getCurrentUserId =
       sessionStorage.getItem(
         "userId"
       ) ||
+      localStorage.getItem(
+        "userId"
+      ) ||
       storedUser?.id ||
       storedUser?.userId;
 
@@ -49,7 +46,9 @@ export const getCurrentUserId =
       Number(rawUserId);
 
     if (
-      !Number.isInteger(userId) ||
+      !Number.isInteger(
+        userId
+      ) ||
       userId <= 0
     ) {
       return null;
@@ -58,8 +57,63 @@ export const getCurrentUserId =
     return userId;
   };
 
+const requireUserId = (
+  providedUserId
+) => {
+  const parsedProvidedUserId =
+    Number(
+      providedUserId
+    );
+
+  const userId =
+    Number.isInteger(
+      parsedProvidedUserId
+    ) &&
+    parsedProvidedUserId > 0
+      ? parsedProvidedUserId
+      : getCurrentUserId();
+
+  if (
+    !Number.isInteger(
+      userId
+    ) ||
+    userId <= 0
+  ) {
+    throw new Error(
+      "Your login session is invalid. Please log in again."
+    );
+  }
+
+  return userId;
+};
+
+const requirePositiveId = (
+  value,
+  message
+) => {
+  const id =
+    Number(value);
+
+  if (
+    !Number.isInteger(id) ||
+    id <= 0
+  ) {
+    throw new Error(
+      message
+    );
+  }
+
+  return id;
+};
+
 /*
-  Generate complete AI course
+  Start background course generation.
+
+  Backend returns:
+  {
+    jobId,
+    status: "queued"
+  }
 */
 
 export const generateCourse =
@@ -67,19 +121,9 @@ export const generateCourse =
     courseData
   ) => {
     const userId =
-      Number(
+      requireUserId(
         courseData?.userId
-      ) ||
-      getCurrentUserId();
-
-    if (
-      !Number.isInteger(userId) ||
-      userId <= 0
-    ) {
-      throw new Error(
-        "Your login session is invalid. Please log in again."
       );
-    }
 
     const response =
       await api.post(
@@ -87,6 +131,10 @@ export const generateCourse =
         {
           ...courseData,
           userId,
+        },
+        {
+          timeout:
+            30000,
         }
       );
 
@@ -94,8 +142,77 @@ export const generateCourse =
   };
 
 /*
-  Get all courses
+  Poll live generation status
 */
+
+export const getCourseGenerationStatus =
+  async ({
+    jobId,
+    userId:
+      providedUserId,
+  }) => {
+    const validJobId =
+      requirePositiveId(
+        jobId,
+        "A valid generation job ID is required."
+      );
+
+    const userId =
+      requireUserId(
+        providedUserId
+      );
+
+    const response =
+      await api.get(
+        `/courses/generation/${validJobId}`,
+        {
+          params: {
+            userId,
+          },
+
+          timeout:
+            30000,
+        }
+      );
+
+    return response.data;
+  };
+
+/*
+  Resume failed generation
+*/
+
+export const resumeCourseGeneration =
+  async ({
+    jobId,
+    userId:
+      providedUserId,
+  }) => {
+    const validJobId =
+      requirePositiveId(
+        jobId,
+        "A valid generation job ID is required."
+      );
+
+    const userId =
+      requireUserId(
+        providedUserId
+      );
+
+    const response =
+      await api.post(
+        `/courses/generation/${validJobId}/resume`,
+        {
+          userId,
+        },
+        {
+          timeout:
+            30000,
+        }
+      );
+
+    return response.data;
+  };
 
 export const getAllCourses =
   async () => {
@@ -107,28 +224,14 @@ export const getAllCourses =
     return response.data;
   };
 
-/*
-  Get logged-in user's courses
-*/
-
 export const getMyCourses =
   async (
     providedUserId
   ) => {
     const userId =
-      Number(
+      requireUserId(
         providedUserId
-      ) ||
-      getCurrentUserId();
-
-    if (
-      !Number.isInteger(userId) ||
-      userId <= 0
-    ) {
-      throw new Error(
-        "Your login session is invalid. Please log in again."
       );
-    }
 
     const response =
       await api.get(
@@ -143,27 +246,15 @@ export const getMyCourses =
     return response.data;
   };
 
-/*
-  Get complete course
-*/
-
 export const getCourseById =
   async (
     courseId
   ) => {
     const validCourseId =
-      Number(courseId);
-
-    if (
-      !Number.isInteger(
-        validCourseId
-      ) ||
-      validCourseId <= 0
-    ) {
-      throw new Error(
+      requirePositiveId(
+        courseId,
         "A valid course ID is required."
       );
-    }
 
     const response =
       await api.get(
@@ -173,10 +264,6 @@ export const getCourseById =
     return response.data;
   };
 
-/*
-  Delete user's course
-*/
-
 export const deleteMyCourse =
   async ({
     courseId,
@@ -184,33 +271,15 @@ export const deleteMyCourse =
       providedUserId,
   }) => {
     const validCourseId =
-      Number(courseId);
-
-    const userId =
-      Number(
-        providedUserId
-      ) ||
-      getCurrentUserId();
-
-    if (
-      !Number.isInteger(
-        validCourseId
-      ) ||
-      validCourseId <= 0
-    ) {
-      throw new Error(
+      requirePositiveId(
+        courseId,
         "A valid course ID is required."
       );
-    }
 
-    if (
-      !Number.isInteger(userId) ||
-      userId <= 0
-    ) {
-      throw new Error(
-        "Your login session is invalid. Please log in again."
+    const userId =
+      requireUserId(
+        providedUserId
       );
-    }
 
     const response =
       await api.delete(
@@ -225,10 +294,6 @@ export const deleteMyCourse =
     return response.data;
   };
 
-/*
-  Get logged-in user's lessons
-*/
-
 export const getMyLessons =
   async ({
     userId:
@@ -236,35 +301,25 @@ export const getMyLessons =
     courseId,
   } = {}) => {
     const userId =
-      Number(
+      requireUserId(
         providedUserId
-      ) ||
-      getCurrentUserId();
-
-    if (
-      !Number.isInteger(userId) ||
-      userId <= 0
-    ) {
-      throw new Error(
-        "Your login session is invalid. Please log in again."
       );
-    }
 
     const params = {
       userId,
     };
 
-    const validCourseId =
+    const parsedCourseId =
       Number(courseId);
 
     if (
       Number.isInteger(
-        validCourseId
+        parsedCourseId
       ) &&
-      validCourseId > 0
+      parsedCourseId > 0
     ) {
       params.courseId =
-        validCourseId;
+        parsedCourseId;
     }
 
     const response =
@@ -278,30 +333,18 @@ export const getMyLessons =
     return response.data;
   };
 
-/*
-  Get lesson by ID
-*/
-
 export const getLessonById =
   async (
     lessonId
   ) => {
     const validLessonId =
-      Number(lessonId);
-
-    const userId =
-      getCurrentUserId();
-
-    if (
-      !Number.isInteger(
-        validLessonId
-      ) ||
-      validLessonId <= 0
-    ) {
-      throw new Error(
+      requirePositiveId(
+        lessonId,
         "A valid lesson ID is required."
       );
-    }
+
+    const userId =
+      requireUserId();
 
     const response =
       await api.get(
@@ -316,10 +359,6 @@ export const getLessonById =
     return response.data;
   };
 
-/*
-  Get lesson progress
-*/
-
 export const getLessonProgress =
   async ({
     lessonId,
@@ -327,33 +366,15 @@ export const getLessonProgress =
       providedUserId,
   }) => {
     const validLessonId =
-      Number(lessonId);
-
-    const userId =
-      Number(
-        providedUserId
-      ) ||
-      getCurrentUserId();
-
-    if (
-      !Number.isInteger(
-        validLessonId
-      ) ||
-      validLessonId <= 0
-    ) {
-      throw new Error(
+      requirePositiveId(
+        lessonId,
         "A valid lesson ID is required."
       );
-    }
 
-    if (
-      !Number.isInteger(userId) ||
-      userId <= 0
-    ) {
-      throw new Error(
-        "Your login session is invalid. Please log in again."
+    const userId =
+      requireUserId(
+        providedUserId
       );
-    }
 
     const response =
       await api.get(
@@ -368,10 +389,6 @@ export const getLessonProgress =
     return response.data;
   };
 
-/*
-  Update lesson progress
-*/
-
 export const updateLessonProgress =
   async ({
     lessonId,
@@ -381,57 +398,29 @@ export const updateLessonProgress =
     isCompleted,
   }) => {
     const validLessonId =
-      Number(lessonId);
-
-    const validCourseId =
-      Number(courseId);
-
-    const userId =
-      Number(
-        providedUserId
-      ) ||
-      getCurrentUserId();
-
-    if (
-      !Number.isInteger(
-        validLessonId
-      ) ||
-      validLessonId <= 0
-    ) {
-      throw new Error(
+      requirePositiveId(
+        lessonId,
         "A valid lesson ID is required."
       );
-    }
 
-    if (
-      !Number.isInteger(
-        validCourseId
-      ) ||
-      validCourseId <= 0
-    ) {
-      throw new Error(
+    const validCourseId =
+      requirePositiveId(
+        courseId,
         "A valid course ID is required."
       );
-    }
 
-    if (
-      !Number.isInteger(userId) ||
-      userId <= 0
-    ) {
-      throw new Error(
-        "Your login session is invalid. Please log in again."
+    const userId =
+      requireUserId(
+        providedUserId
       );
-    }
 
     const response =
       await api.post(
         `/progress/lessons/${validLessonId}`,
         {
           userId,
-
           courseId:
             validCourseId,
-
           isCompleted:
             Boolean(
               isCompleted
@@ -442,10 +431,6 @@ export const updateLessonProgress =
     return response.data;
   };
 
-/*
-  Get complete course progress
-*/
-
 export const getCourseProgress =
   async ({
     courseId,
@@ -453,33 +438,15 @@ export const getCourseProgress =
       providedUserId,
   }) => {
     const validCourseId =
-      Number(courseId);
-
-    const userId =
-      Number(
-        providedUserId
-      ) ||
-      getCurrentUserId();
-
-    if (
-      !Number.isInteger(
-        validCourseId
-      ) ||
-      validCourseId <= 0
-    ) {
-      throw new Error(
+      requirePositiveId(
+        courseId,
         "A valid course ID is required."
       );
-    }
 
-    if (
-      !Number.isInteger(userId) ||
-      userId <= 0
-    ) {
-      throw new Error(
-        "Your login session is invalid. Please log in again."
+    const userId =
+      requireUserId(
+        providedUserId
       );
-    }
 
     const response =
       await api.get(
@@ -494,42 +461,18 @@ export const getCourseProgress =
     return response.data;
   };
 
-  /*
-  Download logged-in user's complete
-  course notes as a PDF.
-*/
-
 export const downloadCourseNotesPdf =
   async (
     courseId
   ) => {
     const validCourseId =
-      Number(courseId);
-
-    const userId =
-      getCurrentUserId();
-
-    if (
-      !Number.isInteger(
-        validCourseId
-      ) ||
-      validCourseId <= 0
-    ) {
-      throw new Error(
+      requirePositiveId(
+        courseId,
         "A valid course ID is required."
       );
-    }
 
-    if (
-      !Number.isInteger(
-        userId
-      ) ||
-      userId <= 0
-    ) {
-      throw new Error(
-        "Your login session is invalid. Please log in again."
-      );
-    }
+    const userId =
+      requireUserId();
 
     try {
       const response =
@@ -553,34 +496,34 @@ export const downloadCourseNotesPdf =
           "content-disposition"
         ] || "";
 
-      const encodedFileNameMatch =
+      const encodedNameMatch =
         contentDisposition.match(
           /filename\*=UTF-8''([^;]+)/i
         );
 
-      const standardFileNameMatch =
+      const normalNameMatch =
         contentDisposition.match(
-          /filename="?([^"]+)"?/i
+          /filename="?([^";]+)"?/i
         );
 
       let fileName =
         `skillverse-course-${validCourseId}-notes.pdf`;
 
       if (
-        encodedFileNameMatch?.[1]
+        encodedNameMatch?.[1]
       ) {
         fileName =
           decodeURIComponent(
-            encodedFileNameMatch[1]
+            encodedNameMatch[1]
           );
       } else if (
-        standardFileNameMatch?.[1]
+        normalNameMatch?.[1]
       ) {
         fileName =
-          standardFileNameMatch[1];
+          normalNameMatch[1];
       }
 
-      const pdfBlob =
+      const blob =
         new Blob(
           [
             response.data,
@@ -591,32 +534,40 @@ export const downloadCourseNotesPdf =
           }
         );
 
-      const downloadUrl =
-        window.URL.createObjectURL(
-          pdfBlob
-        );
+      const url =
+        window.URL
+          .createObjectURL(
+            blob
+          );
 
-      const downloadLink =
+      const link =
         document.createElement(
           "a"
         );
 
-      downloadLink.href =
-        downloadUrl;
+      link.href =
+        url;
 
-      downloadLink.download =
+      link.download =
         fileName;
 
-      document.body.appendChild(
-        downloadLink
-      );
+      document.body
+        .appendChild(
+          link
+        );
 
-      downloadLink.click();
+      link.click();
 
-      downloadLink.remove();
+      link.remove();
 
-      window.URL.revokeObjectURL(
-        downloadUrl
+      window.setTimeout(
+        () => {
+          window.URL
+            .revokeObjectURL(
+              url
+            );
+        },
+        1000
       );
 
       return {
@@ -626,12 +577,14 @@ export const downloadCourseNotesPdf =
     } catch (error) {
       if (
         error.response
-          ?.data instanceof Blob
+          ?.data instanceof
+        Blob
       ) {
-        try {
-          const responseText =
-            await error.response.data.text();
+        const responseText =
+          await error.response
+            .data.text();
 
+        try {
           const responseData =
             JSON.parse(
               responseText
@@ -642,14 +595,18 @@ export const downloadCourseNotesPdf =
               "Failed to download course notes."
           );
         } catch (
-          blobError
+          parsingError
         ) {
           if (
-            blobError.message !==
-            "Unexpected end of JSON input"
+            parsingError instanceof
+            SyntaxError
           ) {
-            throw blobError;
+            throw new Error(
+              "Failed to download course notes."
+            );
           }
+
+          throw parsingError;
         }
       }
 
